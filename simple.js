@@ -31,6 +31,7 @@ class NQueensVisualizer {
     setupEventListeners() {
         this.boardSizeSelect.addEventListener('change', () => {
             this.boardSize = parseInt(this.boardSizeSelect.value);
+            this.createBoard();
             this.reset();
         });
         

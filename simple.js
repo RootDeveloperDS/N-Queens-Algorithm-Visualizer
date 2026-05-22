@@ -16,7 +16,6 @@ class NQueensVisualizer {
                 this.currentRow = 0;
                 this.isRunning = false;
                 this.isPaused = false;
-                this.timeoutId = null;
 
                 this.initializeElements();
                 this.syncAnimationDurationsFromCss();
@@ -122,29 +121,30 @@ class NQueensVisualizer {
         async start() {
                 if (this.isRunning) return;
 
+                this.reset();
                 this.isRunning = true;
                 this.isPaused = false;
                 this.startBtn.disabled = true;
                 this.pauseBtn.disabled = false;
+                this.pauseBtn.textContent = 'Pause';
                 this.statusElement.textContent = 'Running...';
 
                 await this.solveNQueens();
 
+                const wasStopped = !this.isRunning;
                 this.isRunning = false;
                 this.startBtn.disabled = false;
                 this.pauseBtn.disabled = true;
-                this.statusElement.textContent = 'Complete';
+                this.pauseBtn.textContent = 'Pause';
+                this.statusElement.textContent = wasStopped ? 'Ready' : 'Complete';
         }
 
         pause() {
-                this.isPaused = true;
-                this.startBtn.disabled = false;
-                this.pauseBtn.disabled = true;
-                this.statusElement.textContent = 'Paused';
+                if (!this.isRunning) return;
 
-                if (this.timeoutId) {
-                        clearTimeout(this.timeoutId);
-                }
+                this.isPaused = !this.isPaused;
+                this.pauseBtn.textContent = this.isPaused ? 'Resume' : 'Pause';
+                this.statusElement.textContent = this.isPaused ? 'Paused' : 'Running...';
         }
 
         stop() {
@@ -152,10 +152,7 @@ class NQueensVisualizer {
                 this.isPaused = false;
                 this.startBtn.disabled = false;
                 this.pauseBtn.disabled = true;
-
-                if (this.timeoutId) {
-                        clearTimeout(this.timeoutId);
-                }
+                this.pauseBtn.textContent = 'Pause';
         }
 
         async solveNQueens() {
@@ -163,18 +160,19 @@ class NQueensVisualizer {
         }
 
         async solve(row) {
-                if (!this.isRunning || this.isPaused) return false;
+                if (!this.isRunning) return false;
 
                 if (row === this.boardSize) {
                         this.foundSolution();
-                        return true;
+                        await this.delay(this.speed);
+                        return false;
                 }
 
                 this.currentRow = row;
                 this.highlightCurrentRow(row);
 
                 for (let col = 0; col < this.boardSize; col++) {
-                        if (!this.isRunning || this.isPaused) return false;
+                        if (!this.isRunning) return false;
 
                         this.attemptCount++;
                         this.updateStats();
@@ -188,9 +186,8 @@ class NQueensVisualizer {
 
                                 await this.delay(this.speed);
 
-                                if (await this.solve(row + 1)) {
-                                        return true;
-                                }
+                                await this.solve(row + 1);
+                                if (!this.isRunning) return false;
 
                                 this.board[row] = -1;
                                 await this.removeQueen(row, col);
@@ -366,7 +363,30 @@ class NQueensVisualizer {
 
         delay(ms) {
                 return new Promise(resolve => {
-                        this.timeoutId = setTimeout(resolve, ms);
+                        let elapsed = 0;
+                        let lastTime = performance.now();
+
+                        const step = now => {
+                                if (!this.isRunning) {
+                                        resolve();
+                                        return;
+                                }
+
+                                const delta = now - lastTime;
+                                lastTime = now;
+
+                                if (!this.isPaused) {
+                                        elapsed += delta;
+                                        if (elapsed >= ms) {
+                                                resolve();
+                                                return;
+                                        }
+                                }
+
+                                requestAnimationFrame(step);
+                        };
+
+                        requestAnimationFrame(step);
                 });
         }
 }

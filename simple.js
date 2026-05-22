@@ -16,12 +16,13 @@ class NQueensVisualizer {
                 this.currentRow = 0;
                 this.isRunning = false;
                 this.isPaused = false;
-                this.timeoutId = null;
+                this.runToken = 0;
 
                 this.initializeElements();
                 this.syncAnimationDurationsFromCss();
                 this.setupEventListeners();
                 this.createBoard();
+                this.reset();
         }
 
         syncAnimationDurationsFromCss() {
@@ -122,59 +123,60 @@ class NQueensVisualizer {
         async start() {
                 if (this.isRunning) return;
 
+                this.reset();
+                const runToken = ++this.runToken;
                 this.isRunning = true;
                 this.isPaused = false;
                 this.startBtn.disabled = true;
                 this.pauseBtn.disabled = false;
+                this.pauseBtn.textContent = 'Pause';
                 this.statusElement.textContent = 'Running...';
 
-                await this.solveNQueens();
+                await this.solveNQueens(runToken);
 
+                if (runToken !== this.runToken) return;
+                const wasStopped = !this.isRunning;
                 this.isRunning = false;
                 this.startBtn.disabled = false;
                 this.pauseBtn.disabled = true;
-                this.statusElement.textContent = 'Complete';
+                this.pauseBtn.textContent = 'Pause';
+                this.statusElement.textContent = wasStopped ? 'Ready' : 'Complete';
         }
 
         pause() {
-                this.isPaused = true;
-                this.startBtn.disabled = false;
-                this.pauseBtn.disabled = true;
-                this.statusElement.textContent = 'Paused';
+                if (!this.isRunning) return;
 
-                if (this.timeoutId) {
-                        clearTimeout(this.timeoutId);
-                }
+                this.isPaused = !this.isPaused;
+                this.pauseBtn.textContent = this.isPaused ? 'Resume' : 'Pause';
+                this.statusElement.textContent = this.isPaused ? 'Paused' : 'Running...';
         }
 
         stop() {
                 this.isRunning = false;
                 this.isPaused = false;
+                this.runToken += 1;
                 this.startBtn.disabled = false;
                 this.pauseBtn.disabled = true;
-
-                if (this.timeoutId) {
-                        clearTimeout(this.timeoutId);
-                }
+                this.pauseBtn.textContent = 'Pause';
         }
 
-        async solveNQueens() {
-                await this.solve(0);
+        async solveNQueens(runToken) {
+                await this.solve(0, runToken);
         }
 
-        async solve(row) {
-                if (!this.isRunning || this.isPaused) return false;
+        async solve(row, runToken) {
+                if (!this.isRunning || runToken !== this.runToken) return false;
 
                 if (row === this.boardSize) {
                         this.foundSolution();
-                        return true;
+                        return false;
                 }
 
                 this.currentRow = row;
                 this.highlightCurrentRow(row);
 
                 for (let col = 0; col < this.boardSize; col++) {
-                        if (!this.isRunning || this.isPaused) return false;
+                        if (!this.isRunning || runToken !== this.runToken) return false;
 
                         this.attemptCount++;
                         this.updateStats();
@@ -182,21 +184,23 @@ class NQueensVisualizer {
                         if (this.isSafe(row, col)) {
                                 const previousCol = this.lastPlacedCols[row];
                                 this.board[row] = col;
-                                await this.placeQueen(row, col, previousCol);
+                                await this.placeQueen(row, col, previousCol, runToken);
+                                if (!this.isRunning || runToken !== this.runToken) return false;
                                 this.lastPlacedCols[row] = col;
                                 this.highlightPosition(row, col, 'safe');
 
-                                await this.delay(this.speed);
+                                await this.delay(this.speed, runToken);
+                                if (!this.isRunning || runToken !== this.runToken) return false;
 
-                                if (await this.solve(row + 1)) {
-                                        return true;
-                                }
+                                await this.solve(row + 1, runToken);
+                                if (!this.isRunning || runToken !== this.runToken) return false;
 
                                 this.board[row] = -1;
-                                await this.removeQueen(row, col);
+                                await this.removeQueen(row, col, runToken);
                         } else {
                                 this.highlightPosition(row, col, 'unsafe');
-                                await this.delay(this.speed / 2);
+                                await this.delay(this.speed / 2, runToken);
+                                if (!this.isRunning || runToken !== this.runToken) return false;
                                 this.clearHighlight(row, col);
                         }
                 }
@@ -214,24 +218,27 @@ class NQueensVisualizer {
                 return true;
         }
 
-        async placeQueen(row, col, fromCol = -1) {
+        async placeQueen(row, col, fromCol = -1, runToken = this.runToken) {
                 if (fromCol !== -1 && fromCol !== col) {
                         await this.animateQueenShift(row, fromCol, col);
                 }
 
+                if (!this.isRunning || runToken !== this.runToken) return;
                 const cell = this.getCell(row, col);
                 cell.textContent = '♛';
                 cell.classList.add('queen', 'queen--active');
                 cell.classList.remove('queen--placed');
 
-                await this.delay(this.queenSettleDuration);
+                await this.delay(this.queenSettleDuration, runToken);
+                if (!this.isRunning || runToken !== this.runToken) return;
                 if (this.board[row] === col) {
                         cell.classList.remove('queen--active');
                         cell.classList.add('queen--placed');
                 }
         }
 
-        async removeQueen(row, col) {
+        async removeQueen(row, col, runToken = this.runToken) {
+                if (!this.isRunning || runToken !== this.runToken) return;
                 const cell = this.getCell(row, col);
                 cell.textContent = '';
                 cell.classList.remove('queen', 'queen--placed', 'queen--active', 'safe', 'unsafe');
@@ -364,9 +371,40 @@ class NQueensVisualizer {
                 this.attemptCountElement.textContent = this.attemptCount;
         }
 
-        delay(ms) {
+        delay(ms, runToken = this.runToken) {
                 return new Promise(resolve => {
-                        this.timeoutId = setTimeout(resolve, ms);
+                        let elapsed = 0;
+                        let lastTime = performance.now();
+                        let resolved = false;
+
+                        const finish = () => {
+                                if (resolved) return;
+                                resolved = true;
+                                resolve();
+                        };
+
+                        const step = now => {
+                                if (resolved) return;
+                                if (!this.isRunning || runToken !== this.runToken) {
+                                        finish();
+                                        return;
+                                }
+
+                                const delta = now - lastTime;
+                                lastTime = now;
+
+                                if (!this.isPaused) {
+                                        elapsed += delta;
+                                        if (elapsed >= ms) {
+                                                finish();
+                                                return;
+                                        }
+                                }
+
+                                requestAnimationFrame(step);
+                        };
+
+                        requestAnimationFrame(step);
                 });
         }
 }

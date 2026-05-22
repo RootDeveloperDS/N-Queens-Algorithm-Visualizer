@@ -164,7 +164,6 @@ class NQueensVisualizer {
 
                 if (row === this.boardSize) {
                         this.foundSolution();
-                        await this.delay(this.speed);
                         return false;
                 }
 
@@ -365,10 +364,18 @@ class NQueensVisualizer {
                 return new Promise(resolve => {
                         let elapsed = 0;
                         let lastTime = performance.now();
+                        let resolved = false;
+
+                        const finish = () => {
+                                if (resolved) return;
+                                resolved = true;
+                                resolve();
+                        };
 
                         const step = now => {
+                                if (resolved) return;
                                 if (!this.isRunning) {
-                                        resolve();
+                                        finish();
                                         return;
                                 }
 
@@ -378,7 +385,7 @@ class NQueensVisualizer {
                                 if (!this.isPaused) {
                                         elapsed += delta;
                                         if (elapsed >= ms) {
-                                                resolve();
+                                                finish();
                                                 return;
                                         }
                                 }

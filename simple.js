@@ -361,7 +361,6 @@ class NQueensVisualizer {
                                 miniBoard.appendChild(miniCell);
                         }
                 }
-
                 solutionDiv.appendChild(miniBoard);
                 this.solutionListElement.appendChild(solutionDiv);
         }
@@ -400,10 +399,8 @@ class NQueensVisualizer {
                                                 return;
                                         }
                                 }
-
                                 requestAnimationFrame(step);
                         };
-
                         requestAnimationFrame(step);
                 });
         }
